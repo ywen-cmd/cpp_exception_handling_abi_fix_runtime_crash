@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 
 namespace __cxxabiv1 {
     struct __class_type_info {
@@ -15,12 +16,6 @@ char exception_buff[EXCEPTION_BUFF_SIZE];
 
 extern "C" {
 
-void* __cxa_allocate_exception(size_t thrown_size)
-{
-    if (thrown_size > EXCEPTION_BUFF_SIZE) printf("Exception too big");
-    return &exception_buff;
-}
-
 void __cxa_free_exception(void *thrown_exception);
 
 
@@ -30,22 +25,34 @@ void __cxa_free_exception(void *thrown_exception);
 typedef void (*unexpected_handler)(void);
 typedef void (*terminate_handler)(void);
 
-struct __cxa_exception { 
-	std::type_info *	exceptionType;
-	void (*exceptionDestructor) (void *); 
-	unexpected_handler	unexpectedHandler;
-	terminate_handler	terminateHandler;
-	__cxa_exception *	nextException;
-
-	int			handlerCount;
-	int			handlerSwitchValue;
-	const char *		actionRecord;
-	const char *		languageSpecificData;
-	void *			catchTemp;
-	void *			adjustedPtr;
-
-	_Unwind_Exception	unwindHeader;
+struct __cxa_exception
+{
+  std::type_info *exceptionType;
+  void (*exceptionDestructor) (void *); 
+  unexpected_handler unexpectedHandler;
+  terminate_handler terminateHandler;
+  __cxa_exception *nextException;
+  int handlerCount;
+  int handlerSwitchValue;
+  const unsigned char *actionRecord;
+  const unsigned char *languageSpecificData;
+  _Unwind_Ptr catchTemp;
+  void *adjustedPtr;
+  _Unwind_Exception unwindHeader;
 };
+
+struct __cxa_refcounted_exception
+{
+  int referenceCount;
+  __cxa_exception exc;
+};
+
+void *
+__cxa_allocate_exception(std::size_t thrown_size) _GLIBCXX_NOTHROW
+{
+  thrown_size += sizeof (__cxa_refcounted_exception);
+  return (void *)((char *)exception_buff + sizeof (__cxa_refcounted_exception));
+}
 
 void __cxa_throw(void* thrown_exception,
                  std::type_info *tinfo,
@@ -352,8 +359,10 @@ struct LSDA
     {
         // The index starts at the end of the types table
         int idx = -1 * action->type_index;
-        const void* catch_type_info = this->types_table_start[idx];
-        return (const std::type_info *) catch_type_info;
+        // read by encode, but i just make a toy version here
+        // ywen hack here for gcc 10.5.0
+        uint64_t* catch_type_info_addr = (uint64_t*)((*((uint32_t* )(this->types_table_start) + idx) + (uint64_t)(this->types_table_start)) + idx * 4);
+        return (const std::type_info *) (*catch_type_info_addr);
     }
 };
 
